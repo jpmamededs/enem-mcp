@@ -11,9 +11,24 @@ Servidor [MCP](https://modelcontextprotocol.io) para estudar para o ENEM com as 
 
 ## Instalação
 
+### Claude Desktop (um clique)
+
+1. Baixe o arquivo **`enem-mcp.mcpb`** da [página de releases](https://github.com/jpmamededs/enem-mcp/releases/latest).
+2. Dê dois cliques no arquivo (ou arraste para a janela do Claude Desktop) e clique em **Instalar**.
+
+Não é preciso instalar Python: o Claude Desktop cuida de tudo.
+
+### Claude Code
+
+```bash
+claude mcp add enem -- uvx enem-mcp
+```
+
+### Outros clientes
+
 Requer [uv](https://docs.astral.sh/uv/getting-started/installation/) (ou Python 3.10+ com `pip install enem-mcp`).
 
-### VS Code
+#### VS Code
 
 Adicione ao `.vscode/mcp.json` (ou às configurações de usuário):
 
@@ -29,7 +44,7 @@ Adicione ao `.vscode/mcp.json` (ou às configurações de usuário):
 }
 ```
 
-### Claude Desktop / Cursor / outros clientes
+#### Cursor / outros clientes
 
 ```json
 {

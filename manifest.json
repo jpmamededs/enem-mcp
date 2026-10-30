@@ -1,0 +1,62 @@
+{
+  "manifest_version": "0.4",
+  "name": "enem-mcp",
+  "display_name": "ENEM — questões, simulados e gabaritos",
+  "version": "1.0.0",
+  "description": "Questões oficiais do ENEM (2009–2023): gabaritos, busca por tema, simulados em PDF e desempenho.",
+  "long_description": "Estude para o ENEM com as questões oficiais, via API pública enem.dev.\n\n- Consulte qualquer questão e seu gabarito, com as imagens\n- Busque questões por tema, disciplina e ano\n- Crie simulados, inclusive em **PDF** com folha de respostas, página \"GABARITO ABAIXO\" e questões resolvidas com explicação\n- Corrija simulados, acompanhe seu desempenho e revise as questões que errou",
+  "author": {
+    "name": "João Pedro Mamede",
+    "url": "https://github.com/jpmamededs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jpmamededs/enem-mcp.git"
+  },
+  "homepage": "https://github.com/jpmamededs/enem-mcp",
+  "support": "https://github.com/jpmamededs/enem-mcp/issues",
+  "icon": "icon.png",
+  "server": {
+    "type": "uv",
+    "entry_point": "src/enem_mcp/server.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": ["run", "--directory", "${__dirname}", "enem-mcp"],
+      "env": {
+        "ENEM_PDF_DIR": "${user_config.pasta_pdfs}"
+      }
+    }
+  },
+  "user_config": {
+    "pasta_pdfs": {
+      "type": "directory",
+      "title": "Pasta dos PDFs",
+      "description": "Onde os PDFs dos simulados serão salvos",
+      "default": "${HOME}/Downloads/simulados-enem",
+      "required": false
+    }
+  },
+  "tools": [
+    { "name": "listar_provas", "description": "Lista os anos de prova disponíveis" },
+    { "name": "obter_questao", "description": "Enunciado, alternativas e imagens de uma questão" },
+    { "name": "obter_resposta", "description": "Gabarito oficial de uma questão" },
+    { "name": "questao_aleatoria", "description": "Sorteia uma questão para praticar" },
+    { "name": "buscar_questoes", "description": "Busca questões por tema, disciplina e ano" },
+    { "name": "criar_simulado", "description": "Cria um simulado, opcionalmente em PDF" },
+    { "name": "preparar_explicacoes", "description": "Questões com gabarito para escrever as explicações" },
+    { "name": "exportar_simulado_pdf", "description": "Gera o PDF com questões resolvidas e explicadas" },
+    { "name": "corrigir_simulado", "description": "Corrige um simulado e salva o resultado" },
+    { "name": "listar_simulados", "description": "Lista os simulados criados" },
+    { "name": "meu_desempenho", "description": "Estatísticas de desempenho" },
+    { "name": "criar_simulado_revisao", "description": "Simulado só com as questões erradas" }
+  ],
+  "prompts_generated": true,
+  "keywords": ["enem", "vestibular", "simulado", "educação", "estudos"],
+  "license": "MIT",
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "python": ">=3.10"
+    }
+  }
+}
