@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "enem-mcp"
+dynamic = ["version"]
+description = "MCP server com questões oficiais do ENEM: gabaritos, busca por tema, simulados em PDF e desempenho"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "jpmamededs" }]
+requires-python = ">=3.10"
+keywords = ["mcp", "enem", "vestibular", "simulado", "model-context-protocol"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Natural Language :: Portuguese (Brazilian)",
+    "Topic :: Education",
+]
+dependencies = [
+    "mcp>=2.3,<3",
+    "httpx>=0.27",
+    "fpdf2>=2.8",
+    "pillow>=10",
+]
+
+[project.urls]
+Homepage = "https://github.com/jpmamededs/enem-mcp"
+Repository = "https://github.com/jpmamededs/enem-mcp"
+Issues = "https://github.com/jpmamededs/enem-mcp/issues"
+
+[project.scripts]
+enem-mcp = "enem_mcp.server:main"
+
+[tool.hatch.version]
+path = "src/enem_mcp/__init__.py"
