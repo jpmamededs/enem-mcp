@@ -53,6 +53,7 @@
   "prompts_generated": true,
   "keywords": ["enem", "vestibular", "simulado", "educação", "estudos"],
   "license": "MIT",
+  "privacy_policies": ["https://github.com/jpmamededs/enem-mcp#pol%C3%ADtica-de-privacidade"],
   "compatibility": {
     "platforms": ["darwin", "win32", "linux"],
     "runtimes": {

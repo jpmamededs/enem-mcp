@@ -1,9 +1,11 @@
+import argparse
 import asyncio
 import json
 import logging
 import os
 import random
 import re
+import time
 import unicodedata
 import uuid
 from datetime import datetime
@@ -11,7 +13,10 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from mcp.server.mcpserver import Image, MCPServer
+from mcp_types import ToolAnnotations
 from pydantic import BaseModel, Field
+from starlette.requests import Request
+from starlette.responses import FileResponse, PlainTextResponse, Response
 
 from .enem_api import DIRETORIO_DADOS, ClienteEnem, ErroApiEnem
 from .gerador_pdf import DISCIPLINAS, gerar_pdf_simulado, urls_de_imagens
@@ -20,9 +25,19 @@ from .gerador_pdf import DISCIPLINAS, gerar_pdf_simulado, urls_de_imagens
 MAX_PROVAS_NOVAS_POR_CHAMADA = 5
 ARQUIVO_SIMULADOS = DIRETORIO_DADOS / "simulados.json"
 FORMATOS_IMAGEM = {".png": "png", ".jpg": "jpeg", ".jpeg": "jpeg", ".gif": "gif", ".webp": "webp"}
+REGEX_NOME_PDF = re.compile(r"^simulado-enem-[0-9a-f]{8,32}\.pdf$")
+VALIDADE_PDF_REMOTO = 7 * 24 * 3600
+# Ferramentas de histórico pessoal: sem login não dá para separar usuários no modo remoto.
+FERRAMENTAS_SO_LOCAIS = ("listar_simulados", "meu_desempenho", "criar_simulado_revisao")
+
+LEITURA = ToolAnnotations(read_only_hint=True, destructive_hint=False, open_world_hint=True)
+ESCRITA = ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=True)
 
 Disciplina = Literal["ciencias-humanas", "ciencias-natureza", "linguagens", "matematica"]
 Idioma = Literal["ingles", "espanhol"]
+
+# Preenchida no modo HTTP: os PDFs passam a ser entregues por link de download.
+url_publica: str | None = None
 
 mcp = MCPServer(
     "enem-mcp",
@@ -160,7 +175,7 @@ def _chaves_ja_usadas() -> set[str]:
 
 
 def _registrar_simulado(questoes: list[dict[str, Any]], filtros: dict[str, Any]) -> str:
-    simulado_id = uuid.uuid4().hex[:8]
+    simulado_id = uuid.uuid4().hex[:12]
     simulados = _carregar_simulados()
     simulados[simulado_id] = {
         "criado_em": datetime.now().isoformat(timespec="seconds"),
@@ -195,11 +210,26 @@ def _descrever_filtros(filtros: dict[str, Any]) -> str:
 
 
 def _diretorio_pdf() -> Path:
+    if url_publica:
+        return DIRETORIO_DADOS / "pdfs"
     configurado = os.environ.get("ENEM_PDF_DIR")
     if configurado:
         return Path(configurado).expanduser()
     downloads = Path.home() / "Downloads"
     return downloads / "simulados-enem" if downloads.exists() else DIRETORIO_DADOS / "pdfs"
+
+
+def _link_pdf(caminho: Path) -> str:
+    if url_publica:
+        return f"**[Baixar o PDF]({url_publica}/pdfs/{caminho.name})** (link válido por 7 dias)"
+    return f"[{caminho.name}]({caminho.as_uri()})\n\nCaminho: `{caminho}`"
+
+
+def _limpar_pdfs_antigos() -> None:
+    limite = time.time() - VALIDADE_PDF_REMOTO
+    for arquivo in _diretorio_pdf().glob("simulado-enem-*.pdf"):
+        if arquivo.stat().st_mtime < limite:
+            arquivo.unlink(missing_ok=True)
 
 
 async def _exportar_pdf(
@@ -217,6 +247,8 @@ async def _exportar_pdf(
         "Questões oficiais do ENEM (INEP), obtidas via enem.dev.",
     ]
     destino = _diretorio_pdf() / f"simulado-enem-{simulado_id}.pdf"
+    if url_publica:
+        _limpar_pdfs_antigos()
     return await asyncio.to_thread(
         gerar_pdf_simulado,
         destino, f"Simulado ENEM · {simulado_id}", descricao, questoes, imagens, incluir_resolucao, explicacoes,
@@ -235,7 +267,7 @@ async def _imagens_mcp(q: dict[str, Any]) -> list[Image]:
 
 # ---------- ferramentas ----------
 
-@mcp.tool(structured_output=False)
+@mcp.tool(title="Listar provas do ENEM", annotations=LEITURA, structured_output=False)
 async def listar_provas() -> str:
     """Lista as provas do ENEM disponíveis (anos), com disciplinas e idiomas de cada uma."""
     try:
@@ -250,7 +282,7 @@ async def listar_provas() -> str:
     return "\n".join(linhas)
 
 
-@mcp.tool(structured_output=False)
+@mcp.tool(title="Ver questão", annotations=LEITURA, structured_output=False)
 async def obter_questao(
     ano: Annotated[int, Field(description="Ano da prova, ex.: 2022")],
     numero: Annotated[int, Field(ge=1, le=185, description="Número da questão na prova")],
@@ -267,7 +299,7 @@ async def obter_questao(
     return [_formatar_questao(q, mostrar_resposta), *imagens]
 
 
-@mcp.tool(structured_output=False)
+@mcp.tool(title="Sortear questão", annotations=LEITURA, structured_output=False)
 async def questao_aleatoria(
     tema: Annotated[str | None, Field(description="Palavras-chave do tema, separadas por vírgula")] = None,
     disciplina: Annotated[Disciplina | None, Field(description="Área do conhecimento")] = None,
@@ -285,7 +317,7 @@ async def questao_aleatoria(
     return [_formatar_questao(q, mostrar_resposta=False), *await _imagens_mcp(q)]
 
 
-@mcp.tool(structured_output=False)
+@mcp.tool(title="Ver gabarito", annotations=LEITURA, structured_output=False)
 async def obter_resposta(
     ano: Annotated[int, Field(description="Ano da prova, ex.: 2022")],
     numero: Annotated[int, Field(ge=1, le=185, description="Número da questão na prova")],
@@ -304,7 +336,7 @@ async def obter_resposta(
     )
 
 
-@mcp.tool(structured_output=False)
+@mcp.tool(title="Buscar questões", annotations=LEITURA, structured_output=False)
 async def buscar_questoes(
     tema: Annotated[
         str | None,
@@ -350,7 +382,7 @@ async def _apresentar_simulado(
         try:
             caminho = await _exportar_pdf(simulado_id, escolhidas, filtros, incluir_gabarito_no_pdf)
             partes.append(
-                f"**PDF gerado:** [{caminho.name}]({caminho.as_uri()})\n\nCaminho: `{caminho}`"
+                f"**PDF gerado:** {_link_pdf(caminho)}"
                 + (
                     "\n\nNo final do PDF há uma página 'GABARITO ABAIXO' seguida das questões resolvidas. "
                     "Para incluir explicações de cada resposta, use `preparar_explicacoes` e depois "
@@ -375,7 +407,7 @@ async def _apresentar_simulado(
     return "\n\n---\n\n".join(partes)
 
 
-@mcp.tool(structured_output=False)
+@mcp.tool(title="Criar simulado", annotations=ESCRITA, structured_output=False)
 async def criar_simulado(
     quantidade: Annotated[int, Field(ge=1, le=90, description="Número de questões")] = 10,
     tema: Annotated[
@@ -400,7 +432,7 @@ async def criar_simulado(
         return "Nenhuma questão encontrada com esses filtros para montar o simulado."
 
     random.shuffle(questoes)
-    if evitar_repetidas:
+    if evitar_repetidas and not url_publica:
         usadas = _chaves_ja_usadas()
         # Questões inéditas primeiro; repetidas só completam se faltar.
         questoes.sort(key=lambda q: _chave(q["year"], q["index"], q["language"]) in usadas)
@@ -416,7 +448,7 @@ async def criar_simulado(
     return await _apresentar_simulado(simulado_id, escolhidas, filtros, gerar_pdf, incluir_gabarito_no_pdf, avisos)
 
 
-@mcp.tool(structured_output=False)
+@mcp.tool(title="Preparar explicações do simulado", annotations=LEITURA, structured_output=False)
 async def preparar_explicacoes(
     simulado_id: Annotated[str, Field(description="ID retornado por criar_simulado")],
     incluir_imagens: Annotated[bool, Field(description="Anexa as figuras das questões")] = True,
@@ -485,7 +517,7 @@ def _validar_explicacoes(simulado: dict[str, Any], explicacoes: list[Explicacao]
     return erros
 
 
-@mcp.tool(structured_output=False)
+@mcp.tool(title="Gerar PDF do simulado", annotations=ESCRITA, structured_output=False)
 async def exportar_simulado_pdf(
     simulado_id: Annotated[str, Field(description="ID retornado por criar_simulado")],
     incluir_gabarito: Annotated[
@@ -516,10 +548,10 @@ async def exportar_simulado_pdf(
     except Exception as erro:
         return f"Não foi possível gerar o PDF: {erro}"
     com_explicacao = " (com explicações)" if incluir_gabarito and simulado.get("explicacoes") else ""
-    return f"PDF gerado{com_explicacao}: [{caminho.name}]({caminho.as_uri()})\n\nCaminho: `{caminho}`"
+    return f"PDF gerado{com_explicacao}: {_link_pdf(caminho)}"
 
 
-@mcp.tool(structured_output=False)
+@mcp.tool(title="Corrigir simulado", annotations=ESCRITA, structured_output=False)
 async def corrigir_simulado(
     simulado_id: Annotated[str, Field(description="ID retornado por criar_simulado")],
     respostas: Annotated[
@@ -580,7 +612,7 @@ def _historico_respostas() -> list[tuple[str, dict[str, Any], bool]]:
     return registros
 
 
-@mcp.tool(structured_output=False)
+@mcp.tool(title="Listar meus simulados", annotations=LEITURA, structured_output=False)
 async def listar_simulados() -> str:
     """Lista os simulados criados, com data, filtros e nota (se já corrigidos)."""
     simulados = _carregar_simulados()
@@ -599,7 +631,7 @@ async def listar_simulados() -> str:
     return "\n".join(linhas)
 
 
-@mcp.tool(structured_output=False)
+@mcp.tool(title="Meu desempenho", annotations=LEITURA, structured_output=False)
 async def meu_desempenho() -> str:
     """Mostra estatísticas de desempenho nos simulados corrigidos: aproveitamento geral, por disciplina, por ano da prova e evolução."""
     registros = _historico_respostas()
@@ -642,7 +674,7 @@ def _questoes_para_revisar() -> list[dict[str, Any]]:
     return [q for q, certo in ultima.values() if not certo]
 
 
-@mcp.tool(structured_output=False)
+@mcp.tool(title="Criar simulado de revisão", annotations=ESCRITA, structured_output=False)
 async def criar_simulado_revisao(
     quantidade: Annotated[int, Field(ge=1, le=90, description="Número máximo de questões")] = 10,
     disciplina: Annotated[Disciplina | None, Field(description="Revisar só uma área")] = None,
@@ -707,8 +739,51 @@ def plano_de_estudos() -> str:
     )
 
 
+@mcp.custom_route("/pdfs/{nome}", methods=["GET"])
+async def baixar_pdf(request: Request) -> Response:
+    nome = request.path_params["nome"]
+    caminho = _diretorio_pdf() / nome
+    if not REGEX_NOME_PDF.match(nome) or not caminho.is_file():
+        return PlainTextResponse("PDF não encontrado ou expirado.", status_code=404)
+    return FileResponse(caminho, media_type="application/pdf", filename=nome)
+
+
+@mcp.custom_route("/health", methods=["GET"])
+async def saude(request: Request) -> Response:
+    return PlainTextResponse("ok")
+
+
+async def _baixar_todas_as_provas() -> None:
+    for ano in await cliente.anos_disponiveis():
+        await cliente.questoes_do_ano(ano)
+        print(f"ENEM {ano}: ok", flush=True)
+
+
 def main() -> None:
-    mcp.run()
+    global url_publica
+    parser = argparse.ArgumentParser(prog="enem-mcp", description="MCP server com questões do ENEM")
+    parser.add_argument("--http", action="store_true", help="servidor remoto (Streamable HTTP) em vez de stdio")
+    parser.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8000")))
+    parser.add_argument(
+        "--url-publica",
+        default=os.environ.get("ENEM_MCP_URL_PUBLICA") or os.environ.get("RENDER_EXTERNAL_URL"),
+        help="endereço público do servidor, usado nos links de download dos PDFs",
+    )
+    parser.add_argument("--baixar-provas", action="store_true", help="baixa todas as provas para o cache e sai")
+    args = parser.parse_args()
+
+    if args.baixar_provas:
+        asyncio.run(_baixar_todas_as_provas())
+        return
+    if not args.http:
+        mcp.run()
+        return
+
+    url_publica = (args.url_publica or f"http://{args.host}:{args.port}").rstrip("/")
+    for nome in FERRAMENTAS_SO_LOCAIS:
+        mcp.remove_tool(nome)
+    mcp.run("streamable-http", host=args.host, port=args.port, stateless_http=True)
 
 
 if __name__ == "__main__":

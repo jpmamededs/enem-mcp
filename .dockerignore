@@ -1,0 +1,11 @@
+.venv/
+.vscode/
+.git/
+dist/
+cache/
+**/__pycache__/
+*.egg-info/
+*.mcpb
+icon.png
+manifest.json
+server.json

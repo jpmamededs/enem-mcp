@@ -11,6 +11,15 @@ Servidor [MCP](https://modelcontextprotocol.io) para estudar para o ENEM com as 
 
 ## Instalação
 
+### Claude (site, app desktop e celular) — sem instalar nada
+
+1. No Claude, abra **Configurações → Conectores → Adicionar conector personalizado**.
+2. Em **Nome**, escreva `ENEM`.
+3. Em **URL do servidor MCP**, cole: `https://enem-mcp.onrender.com/mcp`
+4. Clique em **Adicionar**. Pronto: é só pedir no chat, por exemplo *"faz um simulado de 10 questões de geometria"*.
+
+Nesse modo os PDFs vêm como link de download (válido por 7 dias). Histórico de desempenho e simulados de revisão só existem na instalação local, abaixo.
+
 ### Claude Desktop (um clique)
 
 1. Baixe o arquivo **`enem-mcp.mcpb`** da [página de releases](https://github.com/jpmamededs/enem-mcp/releases/latest).
@@ -89,8 +98,21 @@ A API enem.dev aceita 1 requisição por segundo; as provas baixadas ficam em ca
 
 ```bash
 uv venv && uv pip install -e .
-uv run enem-mcp
+uv run enem-mcp            # stdio (local)
+uv run enem-mcp --http     # servidor remoto em http://127.0.0.1:8000/mcp
 ```
+
+### Hospedar o servidor remoto
+
+O repositório tem `Dockerfile` e `render.yaml`. No [Render](https://render.com): **New → Blueprint**, escolha este repositório e confirme. O endereço do conector será `https://<nome-do-serviço>.onrender.com/mcp`. Em outras plataformas, use o `Dockerfile` e defina `ENEM_MCP_URL_PUBLICA` com o endereço público (usado nos links dos PDFs).
+
+## Política de privacidade
+
+- **Dados coletados:** apenas os parâmetros das ferramentas (ex.: ano, tema, respostas de um simulado). Não há cadastro, login, nem coleta de nome, e-mail ou dados do dispositivo.
+- **Uso e armazenamento:** os simulados (questões sorteadas, respostas e explicações) são guardados para permitir correção e geração de PDF. Na instalação local, ficam só no seu computador. No servidor remoto, ficam no servidor, identificados apenas por um código aleatório.
+- **Compartilhamento com terceiros:** o servidor consulta a API pública [enem.dev](https://enem.dev) para obter questões e imagens; nenhum dado seu é enviado a ela além do ano/número da questão. Nada é vendido ou compartilhado.
+- **Retenção:** no servidor remoto, PDFs são apagados após 7 dias; simulados podem ser apagados a qualquer momento em reinicializações. Localmente, os dados ficam até você apagar a pasta `enem-mcp`.
+- **Contato:** abra uma issue em [github.com/jpmamededs/enem-mcp/issues](https://github.com/jpmamededs/enem-mcp/issues).
 
 ## Créditos
 
